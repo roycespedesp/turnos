@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Optimizador de Turnos - Standalone</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .estado-td { background-color: #5D8F3E; color: white; }
+        .estado-tn { background-color: #2E75B5; color: white; }
+        .estado-de { background-color: #C55A5A; color: white; }
+        .estado-vc { background-color: #D97706; color: white; }
+        .tab-button { cursor: pointer; }
+        .tab-button.active { border-bottom: 2px solid #3b82f6; }
+        
+        /* Estilos para la nueva vista de semáforo */
+        .semaforo-dia { width: 30px; height: 30px; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; color: white; }
+        .semaforo-verde { background-color: #10B981; } /* Completo: TD + TN */
+        .semaforo-naranja { background-color: #F59E0B; } /* Incompleto: Solo TD o Solo TN */
+        .semaforo-negro { background-color: #111827; border: 1px solid #374151; } /* Vacío */
+        .semaforo-rojo { background-color: #EF4444; } /* Error/Conflicto */
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen">
+    <div class="container mx-auto px-4 py-8 max-w-7xl">
+        <h1 class="text-3xl font-bold mb-8 text-center">Optimizador de Turnos - Versión Standalone</h1>
+        
+        <!-- Navegación de Pestañas -->
+        <div class="bg-gray-800 rounded-lg mb-6">
+            <div class="flex border-b border-gray-700">
+                <button onclick="mostrarTab('config')" id="tab-config" class="tab-button active px-6 py-3 font-medium">
+                    ⚙️ Configuración
+                </button>
+                <button onclick="mostrarTab('ciclos')" id="tab-ciclos" class="tab-button px-6 py-3 font-medium">
+                    🔄 Ciclos
+                </button>
+                <button onclick="mostrarTab('posiciones')" id="tab-posiciones" class="tab-button px-6 py-3 font-medium">
+                    📍 Posiciones
+                </button>
+                <button onclick="mostrarTab('operadores')" id="tab-operadores" class="tab-button px-6 py-3 font-medium">
+                    👥 Operadores
+                </button>
+                <button onclick="mostrarTab('resultados')" id="tab-resultados" class="tab-button px-6 py-3 font-medium">
+                    📊 Resultados
+                </button>
+                <button onclick="mostrarTab('matriz')" id="tab-matriz" class="tab-button px-6 py-3 font-medium">
+                    🔍 Matriz de Análisis
+                </button>
+                <button onclick="mostrarTab('semaforo')" id="tab-semaforo" class="tab-button px-6 py-3 font-medium">
+                    🚦 Semáforo de Cobertura
+                </button>
+            </div>
+        </div>
+        
+        <!-- Pestaña Configuración -->
+        <div id="content-config" class="tab-content">
+            <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Configuración General</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Año de análisis</label>
+                        <input type="number" id="anoAnalisis" value="2025" class="w-full px-3 py-2 bg-gray-700 rounded text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Mes inicio</label>
+                        <select id="mesInicio" class="w-full px-3 py-2 bg-gray-700 rounded text-white">
+                            <option value="1">Enero</option>
+                            <option value="2">Febrero</option>
+                            <option value="3">Marzo</option>
+                            <option value="4">Abril</option>
+                            <option value="5">Mayo</option>
+                            <option value="6">Junio</option>
+                            <option value="7">Julio</option>
+                            <option value="8">Agosto</option>
+                            <option value="9">Septiembre</option>
+                            <option value="10">Octubre</option>
+                            <option value="11">Noviembre</option>
+                            <option value="12">Diciembre</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Límite horas anuales</label>
+                        <input type="number" id="limiteHoras" value="2496" class="w-full px-3 py-2 bg-gray-700 rounded text-white">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium mb-2">Días de vacaciones</label>
+                        <input type="number" id="diasVacaciones" value="30" class="w-full px-3 py-2 bg-gray-700 rounded text-white">
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Botón Optimizar -->
+            <div class="mb-6 text-center">
+                <button onclick="optimizar()" id="btnOptimizar" 
+                        class="bg-blue-600 hover:bg-blue-700 px-8 py-3 rounded-lg font-semibold text-lg">
+                    🚀 Optimizar Turnos
+                </button>
+                <div id="loading" class="hidden mt-4">
+                    <div class="flex flex-col items-center">
+                        <div class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-white mb-2"></div>
+                        <p id="loadingText" class="text-sm">Optimizando...</p>
+                        <p class="text-xs text-gray-400 mt-1">Esto puede tardar unos segundos</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pestaña Ciclos -->
+        <div id="content-ciclos" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Gestión de Ciclos</h2>
+                
+                <!-- Formulario Agregar Ciclo -->
+                <div class="bg-gray-700 rounded-lg p-4 mb-4">
+                    <h3 class="font-medium mb-3">Agregar Nuevo Ciclo</h3>
+                    <div class="grid grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm mb-2">ID Ciclo</label>
+                            <input type="text" id="cicloId" placeholder="12x9" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Días Trabajo</label>
+                            <input type="number" id="cicloDiasTrabajo" placeholder="12" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Días Descanso</label>
+                            <input type="number" id="cicloDiasDescanso" placeholder="9" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="agregarCiclo()" class="w-full bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
+                                ➕ Agregar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-3">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="cicloPreferido" class="mr-2">
+                            <span class="text-sm">Marcar como ciclo preferido</span>
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Lista de Ciclos -->
+                <div>
+                    <h3 class="font-medium mb-3">Ciclos Registrados</h3>
+                    <div id="listaCiclos" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pestaña Posiciones -->
+        <div id="content-posiciones" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Gestión de Posiciones</h2>
+                
+                <!-- Formulario Agregar Posición -->
+                <div class="bg-gray-700 rounded-lg p-4 mb-4">
+                    <h3 class="font-medium mb-3">Agregar Nueva Posición</h3>
+                    <div class="grid grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm mb-2">ID Posición</label>
+                            <input type="text" id="posicionId" placeholder="central_1" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Tipo Posición</label>
+                            <input type="text" id="posicionTipo" placeholder="central" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Operadores Requeridos</label>
+                            <input type="number" id="posicionOpRequeridos" value="1" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div class="flex items-end">
+                            <button onclick="agregarPosicion()" class="w-full bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
+                                ➕ Agregar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Lista de Posiciones -->
+                <div>
+                    <h3 class="font-medium mb-3">Posiciones Registradas</h3>
+                    <div id="listaPosiciones" class="space-y-2"></div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pestaña Operadores -->
+        <div id="content-operadores" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Gestión de Operadores</h2>
+                
+                <!-- Formulario Agregar Operador -->
+                <div class="bg-gray-700 rounded-lg p-4 mb-4">
+                    <h3 class="font-medium mb-3">Agregar Nuevo Operador</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm mb-2">ID Operador (DNI)</label>
+                            <input type="text" id="opId" placeholder="46781909" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div class="md:col-span-2">
+                            <label class="block text-sm mb-2">Nombre Completo</label>
+                            <input type="text" id="opNombre" placeholder="Juan Pérez" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Tipo Posición</label>
+                            <input type="text" id="opTipoPosicion" placeholder="central" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Posición Inicial</label>
+                            <input type="text" id="opPosicionInicial" placeholder="central_1" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Ciclo Inicial</label>
+                            <input type="text" id="opCicloInicial" placeholder="12x9" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Día Ciclo Inicial</label>
+                            <input type="number" id="opDiaCicloInicial" value="1" min="1" max="21" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Turno Ciclo Inicial</label>
+                            <select id="opTurnoCicloInicial" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                                <option value="DIA">Día</option>
+                                <option value="NOCHE">Noche</option>
+                                <option value="DESCANSO">Descanso</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Fecha Gen Vac (DD/MM/YYYY)</label>
+                            <input type="text" id="opFechaGenVac" placeholder="25/01/2021" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Vacaciones Pendientes</label>
+                            <input type="number" id="opVacPendientes" value="0" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div>
+                            <label class="block text-sm mb-2">Horas Laboradas</label>
+                            <input type="number" id="opHorasLaboradas" value="0" class="w-full px-3 py-2 bg-gray-600 rounded text-white">
+                        </div>
+                        <div class="md:col-span-3 flex items-end gap-2">
+                            <button type="button" onclick="agregarOperador()" id="btnAgregarOperador" class="flex-1 bg-green-600 hover:bg-green-700 px-4 py-2 rounded">
+                                ➕ Agregar Operador
+                            </button>
+                            <button type="button" onclick="cancelarEdicionOperador()" id="btnCancelarEdicion" class="hidden bg-gray-600 hover:bg-gray-700 px-4 py-2 rounded">
+                                ❌ Cancelar
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Lista de Operadores -->
+                <div>
+                    <h3 class="font-medium mb-3">Operadores Registrados <span class="text-gray-400 text-sm">(Total: <span id="contadorOperadores">0</span>)</span></h3>
+                    <div id="listaOperadores" class="space-y-2"></div>
+                    <div class="mt-4 text-sm text-gray-400">
+                        <p>💾 Los datos se guardan automáticamente en tu navegador</p>
+                        <div class="flex gap-2 mt-2">
+                            <button onclick="cargarDatosCentral()" class="text-blue-400 hover:text-blue-300 text-xs">
+                                📋 Cargar datos de central (7 operadores)
+                            </button>
+                            <button onclick="limpiarTodosDatos()" class="text-red-400 hover:text-red-300 text-xs">
+                                🗑️ Limpiar todos los datos
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pestaña Resultados -->
+        <div id="content-resultados" class="tab-content hidden">
+            <!-- Estadísticas -->
+            <div id="estadisticas" class="bg-gray-800 rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Estadísticas</h2>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-4" id="estadisticasContent"></div>
+            </div>
+            
+            <!-- Selector de Vista -->
+            <div class="bg-gray-800 rounded-lg p-4 mb-6">
+                <div class="flex gap-4">
+                    <button onclick="mostrarVista('calendario')" id="btnVistaCalendario" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded">
+                        📅 Vista Calendario
+                    </button>
+                    <button onclick="mostrarVista('tabla')" id="btnVistaTabla" class="px-4 py-2 bg-gray-700 hover:bg-gray-600 rounded">
+                        📋 Vista Tabla
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Vista Calendario (similar a Excel) -->
+            <div id="vistaCalendario" class="hidden">
+                <div class="bg-gray-800 rounded-lg p-4 mb-4">
+                    <h2 class="text-xl font-semibold mb-4">Cronograma Anual - Vista Calendario</h2>
+                    <p class="text-sm text-gray-400 mb-4">
+                        <span class="inline-block w-4 h-4 bg-green-600 mr-1"></span> TD = Turno Día
+                        <span class="inline-block w-4 h-4 bg-blue-600 mr-1 ml-4"></span> TN = Turno Noche
+                        <span class="inline-block w-4 h-4 bg-red-600 mr-1 ml-4"></span> DE = Descanso
+                        <span class="inline-block w-4 h-4 bg-orange-600 mr-1 ml-4"></span> VC = Vacaciones
+                    </p>
+                </div>
+                <div class="overflow-x-auto bg-gray-900 rounded-lg p-4">
+                    <table id="tablaCalendario" class="border-collapse text-xs">
+                        <thead id="calendarioHeader"></thead>
+                        <tbody id="calendarioBody"></tbody>
+                    </table>
+                </div>
+            </div>
+            
+            <!-- Vista Tabla Detallada -->
+            <div id="vistaTabla" class="hidden">
+                <div class="bg-gray-800 rounded-lg p-6 mb-4">
+                    <h2 class="text-xl font-semibold mb-4">Cronograma Detallado</h2>
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Filtrar por operador:</label>
+                            <select id="filtroOperador" onchange="filtrarTabla()" class="w-full px-3 py-2 bg-gray-700 rounded text-white">
+                                <option value="">Todos los operadores</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium mb-2">Filtrar por fecha (inicio):</label>
+                            <input type="date" id="filtroFechaInicio" onchange="filtrarTabla()" class="w-full px-3 py-2 bg-gray-700 rounded text-white">
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="overflow-x-auto">
+                    <table id="tablaCronograma" class="w-full bg-gray-800 rounded-lg">
+                        <thead class="bg-gray-700">
+                            <tr>
+                                <th class="px-4 py-3 text-left">Fecha</th>
+                                <th class="px-4 py-3 text-left">Operador</th>
+                                <th class="px-4 py-3 text-left">Posición</th>
+                                <th class="px-4 py-3 text-center">Estado</th>
+                                <th class="px-4 py-3 text-center">Ciclo</th>
+                                <th class="px-4 py-3 text-center">Día Ciclo</th>
+                                <th class="px-4 py-3 text-right">Horas Año</th>
+                                <th class="px-4 py-3 text-right">% Día</th>
+                                <th class="px-4 py-3 text-right">% Noche</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaBody">
+                        </tbody>
+                    </table>
+                </div>
+                
+                <div class="mt-4 text-sm text-gray-400">
+                    <p>Total registros: <span id="totalRegistros">0</span></p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Pestaña Matriz de Análisis -->
+        <div id="content-matriz" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Matriz de Análisis de Cobertura</h2>
+                <p class="text-sm text-gray-400 mb-4">
+                    Esta matriz muestra el estado de cobertura día por día y posición por posición.
+                    Permite identificar huecos, errores y patrones de asignación.
+                </p>
+                <div class="mb-4">
+                    <button onclick="generarMatrizAnalisis()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">
+                        🔄 Generar Matriz
+                    </button>
+                    <button onclick="exportarMatrizCSV()" class="bg-green-600 hover:bg-green-700 px-4 py-2 rounded ml-2">
+                        📥 Exportar CSV
+                    </button>
+                </div>
+                <div id="matrizEstadisticas" class="mb-4"></div>
+            </div>
+            
+            <div class="overflow-x-auto bg-gray-900 rounded-lg p-4">
+                <div id="matrizContenedor"></div>
+            </div>
+        </div>
+
+        <!-- Pestaña Semáforo de Cobertura -->
+        <div id="content-semaforo" class="tab-content hidden">
+            <div class="bg-gray-800 rounded-lg p-6 mb-6">
+                <h2 class="text-xl font-semibold mb-4">Semáforo de Cobertura Diaria</h2>
+                <p class="text-sm text-gray-400 mb-4">
+                    Visualización rápida del estado de cobertura por día. 
+                    <span class="inline-block w-3 h-3 bg-green-500 mx-1 rounded-sm"></span> Verde: Cubierto (TD + TN).
+                    <span class="inline-block w-3 h-3 bg-yellow-500 mx-1 rounded-sm"></span> Naranja: Parcial (Falta 1 turno).
+                    <span class="inline-block w-3 h-3 bg-black border border-gray-600 mx-1 rounded-sm"></span> Negro: Vacío (Faltan ambos turnos).
+                </p>
+                
+                <div class="mb-4 flex gap-2">
+                    <button onclick="generarSemaforo()" class="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">
+                        🔄 Actualizar Vista
+                    </button>
+                </div>
+                
+                <div id="semaforoEstadisticas" class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Se llena dinámicamente -->
+                </div>
+            </div>
+            
+            <div class="bg-gray-900 rounded-lg p-4 overflow-x-auto">
+                <div id="semaforoContenedor" class="grid grid-cols-1 gap-6">
+                    <!-- Aquí se insertan los meses -->
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <script src="optimizer.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>
+
