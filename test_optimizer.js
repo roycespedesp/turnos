@@ -1,11 +1,11 @@
 const { OptimizadorHeuristico } = require('./optimizer');
 
-// Sample Data
+// Sample Data - Updated for 2026 with real operators
 const config = {
-    ano_analisis: 2025,
+    ano_analisis: 2026,
     mes_inicio_analisis: 1,
     dias_vacaciones: 30,
-    limite_horas_anuales: 2200 // Approx
+    limite_horas_anuales: 2208
 };
 
 const ciclos = [
@@ -15,35 +15,104 @@ const ciclos = [
 ];
 
 const posiciones = [
-    { id_posicion: 'POS_1', tipo_posicion: 'central', op_requeridos: 1 },
-    { id_posicion: 'POS_2', tipo_posicion: 'central', op_requeridos: 1 }
+    { id_posicion: 'central_1', tipo_posicion: 'central', op_requeridos: 1 },
+    { id_posicion: 'central_2', tipo_posicion: 'central', op_requeridos: 1 }
 ];
 
-// Create 5 operators to cover 2 positions (4 shifts total per day: 2 Day, 2 Night)
-// 12x9 means ~57% availability. 5 operators * 0.57 = 2.85 operators available on average.
-// We need 2 operators for Day and 2 for Night = 4 operators needed per day?
-// Wait, "Turnos: Siempre serán dos turnos por posición, Día y Noche."
-// So for POS_1, we need 1 Day, 1 Night.
-// For POS_2, we need 1 Day, 1 Night.
-// Total 4 shifts per day.
-// If we have 5 operators, and each works ~12/21 days (~57%), we have 5 * 0.57 = 2.85 operators available per day.
-// We are short! We need 4 operators per day.
-// So with 5 operators, we will definitely have gaps.
-// Let's increase operators to 8. 8 * 0.57 = 4.56. Should be enough.
-const operators = [];
-for (let i = 1; i <= 8; i++) {
-    operators.push({
-        id_operador: `OP_${i}`,
-        nombre: `Operador ${i}`,
+// Datos reales de operadores
+const operators = [
+    {
+        id_operador: '46781909',
+        nombre: 'AGUIRRE HUAYRA JUAN ANTONIO',
         id_tipo_posicion: 'central',
-        id_posicion_inicial: i <= 4 ? 'POS_1' : 'POS_2', // Distribute initial positions
-        fecha_gen_vac: '01/01/2024',
+        id_posicion_inicial: 'central_1',
+        fecha_gen_vac: '25/01/2021',
         horas_laboradas: 0,
         vac_pendientes: 0,
-        dia_ciclo_inicial: (i * 3) % 21 + 1, // Stagger start days
-        turno_ciclo_inicial: i % 2 === 0 ? 'TN' : 'TD' // Mix preferred turns
-    });
-}
+        otra_posicion: 'no',
+        ciclo_inicial: '12x9',
+        dia_ciclo_inicial: 19,
+        turno_ciclo_inicial: 'DESCANSO'
+    },
+    {
+        id_operador: '71023970',
+        nombre: 'PEREZ CARDENAS CHRISTIAN DANNY',
+        id_tipo_posicion: 'central',
+        id_posicion_inicial: 'central_1',
+        fecha_gen_vac: '21/05/2019',
+        horas_laboradas: 0,
+        vac_pendientes: 30,
+        otra_posicion: 'no',
+        ciclo_inicial: '12x9',
+        dia_ciclo_inicial: 12,
+        turno_ciclo_inicial: 'NOCHE'
+    },
+    {
+        id_operador: '70237797',
+        nombre: 'PATRICIO CHAVEZ WALDIR',
+        id_tipo_posicion: 'central',
+        id_posicion_inicial: 'central_1',
+        fecha_gen_vac: '21/05/2019',
+        horas_laboradas: 0,
+        vac_pendientes: 0,
+        otra_posicion: 'no',
+        ciclo_inicial: '12x9',
+        dia_ciclo_inicial: 5,
+        turno_ciclo_inicial: 'DIA'
+    },
+    {
+        id_operador: '71660619',
+        nombre: 'CALIXTO RAMOS ADRIAN',
+        id_tipo_posicion: 'central',
+        id_posicion_inicial: 'central_2',
+        fecha_gen_vac: '18/12/2024',
+        horas_laboradas: 0,
+        vac_pendientes: 0,
+        otra_posicion: 'no',
+        ciclo_inicial: '12x9',
+        dia_ciclo_inicial: 19,
+        turno_ciclo_inicial: 'DESCANSO'
+    },
+    {
+        id_operador: '46539662',
+        nombre: 'TENORIO TENORIO ROSSMELL JAVIER',
+        id_tipo_posicion: 'central',
+        id_posicion_inicial: 'central_2',
+        fecha_gen_vac: '22/02/2024',
+        horas_laboradas: 0,
+        vac_pendientes: 0,
+        otra_posicion: 'no',
+        ciclo_inicial: '12x9',
+        dia_ciclo_inicial: 5,
+        turno_ciclo_inicial: 'NOCHE'
+    },
+    {
+        id_operador: '70431736',
+        nombre: 'HUARCAYA CORDOVA SECILIO MARCELINO',
+        id_tipo_posicion: 'central',
+        id_posicion_inicial: 'central_2',
+        fecha_gen_vac: '3/07/2024',
+        horas_laboradas: 0,
+        vac_pendientes: 0,
+        otra_posicion: 'no',
+        ciclo_inicial: '12x9',
+        dia_ciclo_inicial: 12,
+        turno_ciclo_inicial: 'DIA'
+    },
+    {
+        id_operador: '70320115',
+        nombre: 'SARMIENTO ZACARIAS CRISTIAN FRANK',
+        id_tipo_posicion: 'central',
+        id_posicion_inicial: 'op_vacaciones',
+        fecha_gen_vac: '13/03/2024',
+        horas_laboradas: 0,
+        vac_pendientes: 0,
+        otra_posicion: 'no',
+        ciclo_inicial: '12x9',
+        dia_ciclo_inicial: 0,
+        turno_ciclo_inicial: 'DIA'
+    }
+];
 
 const solicitud = {
     configuracion: config,

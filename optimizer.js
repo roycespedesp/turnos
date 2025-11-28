@@ -111,6 +111,47 @@ class OptimizadorHeuristico {
     }
 
     /**
+     * Calcula la fecha de aniversario de un operador en el año de optimización
+     * @param {Object} operador 
+     * @param {number} anoOptimizacion 
+     * @returns {Date|null}
+     */
+    _calcularFechaAniversario(operador, anoOptimizacion) {
+        const fechaGen = this._convertirFechaExcel(operador.fecha_gen_vac);
+        if (!fechaGen) return null;
+
+        // Crear fecha con día/mes de fecha_gen_vac y año de optimización
+        return new Date(
+            anoOptimizacion,
+            fechaGen.getMonth(),
+            fechaGen.getDate()
+        );
+    }
+
+    /**
+     * Determina si un operador puede tomar vacaciones en una fecha dada
+     * @param {Object} operador 
+     * @param {Date} fechaPropuesta 
+     * @param {number} anoOptimizacion 
+     * @returns {boolean}
+     */
+    _puedeTomarVacaciones(operador, fechaPropuesta, anoOptimizacion) {
+        // Si tiene vacaciones pendientes, puede tomar en cualquier momento
+        if (operador.vac_pendientes && operador.vac_pendientes > 0) {
+            return true;
+        }
+
+        // Si no tiene pendientes, debe haber pasado el aniversario
+        const fechaAniversario = this._calcularFechaAniversario(operador, anoOptimizacion);
+        if (!fechaAniversario) {
+            console.warn(`⚠️ No se pudo calcular aniversario para ${operador.nombre}`);
+            return true; // Permitir por defecto si no hay fecha
+        }
+
+        return fechaPropuesta >= fechaAniversario;
+    }
+
+    /**
      * Inicializa el estado de cada operador
      */
     _inicializarOperadores() {
@@ -206,11 +247,10 @@ class OptimizadorHeuristico {
     }
 
     /**
-     * Programa vacaciones con espaciamiento para evitar duplicidades
+     * Program vacations with anniversary awareness
      * @param {Date} fechaInicio 
      */
     _programarVacacionesConsecutivas(fechaInicio) {
-        // Filtrar operadores regulares (excluir op_vacaciones)
         const operadoresRegulares = this.operadores.filter(
             op => op.id_posicion_inicial !== 'op_vacaciones'
         );
@@ -218,85 +258,107 @@ class OptimizadorHeuristico {
             op => op.id_posicion_inicial === 'op_vacaciones'
         );
 
-        // Convertir fecha_gen_vac y ordenar por prioridad
+        const anoOptimizacion = this.config.ano_analisis;
+
+        // Calcular aniversarios para cada operador
         for (const op of operadoresRegulares) {
-            const fechaVenc = this._convertirFechaExcel(op.fecha_gen_vac);
-            op._fechaVencimientoReal = fechaVenc;
+            op._fechaAniversario = this._calcularFechaAniversario(op, anoOptimizacion);
         }
 
-        // Ordenar: primero con vac_pendientes > 0, luego por fecha más próxima
+        // Ordenar: primero con vac_pendientes, luego por aniversario más temprano
         operadoresRegulares.sort((a, b) => {
             const pendA = (a.vac_pendientes && a.vac_pendientes > 0) ? 0 : 1;
             const pendB = (b.vac_pendientes && b.vac_pendientes > 0) ? 0 : 1;
             if (pendA !== pendB) return pendA - pendB;
 
-            const fechaA = a._fechaVencimientoReal || new Date(2099, 11, 31);
-            const fechaB = b._fechaVencimientoReal || new Date(2099, 11, 31);
+            const fechaA = a._fechaAniversario || new Date(2099, 11, 31);
+            const fechaB = b._fechaAniversario || new Date(2099, 11, 31);
             return fechaA - fechaB;
         });
 
         console.log('\n' + '='.repeat(70));
-        console.log('🗓️  BLOQUE VACACIONAL ESPACIADO (ANTI-DUPLICIDAD)');
+        console.log('🎂 PROGRAMACIÓN DE VACACIONES CON ANIVERSARIOS');
         console.log('='.repeat(70));
-        console.log(`✅ Año: ${this.config.ano_analisis}`);
+        console.log(`✅ Año: ${anoOptimizacion}`);
         console.log(`✅ Operadores regulares: ${operadoresRegulares.length}`);
-        console.log('✅ Espaciamiento: Mínimo 51 días entre inicios (30 vac + 21 ciclo reemplazo)');
-        console.log('\n📋 ORDEN DE VACACIONES (por prioridad):\n');
+        console.log('✅ Respeta aniversarios de contratación');
+        console.log('✅ Vacaciones inician después de ciclo completo o huecos\n');
+        console.log('📋 OPERADORES Y SUS ANIVERSARIOS:\n');
 
-        // Programar slots con ESPACIAMIENTO
-        const espaciamiento = 51; // 30 días vacaciones + 21 días ciclo
+        // Mostrar aniversarios
+        for (let idx = 0; idx < operadoresRegulares.length; idx++) {
+            const op = operadoresRegulares[idx];
+            const anivStr = op._fechaAniversario
+                ? this._formatearFecha(op._fechaAniversario)
+                : 'N/A';
+            const pendStr = (op.vac_pendientes && op.vac_pendientes > 0)
+                ? ` (⚠️ ${op.vac_pendientes} pendientes - puede tomar antes)`
+                : '';
+            console.log(`  ${(idx + 1).toString().padStart(2)}. ${op.nombre.substring(0, 35).padEnd(35)} | Aniv: ${anivStr}${pendStr}`);
+        }
+
+        // Calcular slots con espaciamiento, respetando fechas mínimas
+        const fechaInicioAno = new Date(anoOptimizacion, 0, 1);
+        const espaciamiento = 51; // 30 días vac + 21 días ciclo
         let diaInicio = 0;
+
+        console.log('\n📋 SLOTS ASIGNADOS (pueden ajustarse por aniversario):\n');
 
         for (let idx = 0; idx < operadoresRegulares.length; idx++) {
             const operador = operadoresRegulares[idx];
             if (!this.estadoOperadores[operador.id_operador]) continue;
 
-            const diaFin = diaInicio + 29; // 30 días (0-29, 51-80, etc.)
+            // Calcular día mínimo según aniversario
+            let diaMinimo = 0;
+            if (!this._puedeTomarVacaciones(operador, fechaInicioAno, anoOptimizacion)) {
+                const fechaAniv = operador._fechaAniversario;
+                const diasDesdeInicio = Math.ceil((fechaAniv - fechaInicioAno) / (1000 * 60 * 60 * 24));
+                diaMinimo = Math.max(0, diasDesdeInicio);
+            }
 
-            // Marcar en el estado del operador
+            // Ajustar inicio del slot
+            diaInicio = Math.max(diaInicio, diaMinimo);
+            const diaFin = diaInicio + 29;
+
+            // Guardar en estado del operador
             this.estadoOperadores[operador.id_operador].necesitaVacaciones = true;
             this.estadoOperadores[operador.id_operador].prioridadVacaciones = idx + 1;
             this.estadoOperadores[operador.id_operador].slotInicioBloque = diaInicio;
             this.estadoOperadores[operador.id_operador].slotFinBloque = diaFin;
             this.estadoOperadores[operador.id_operador].diasVacacionesTotales = 30;
-            this.estadoOperadores[operador.id_operador].fechaTentativaInicioVac = null;
+            this.estadoOperadores[operador.id_operador].fechaAniversario = operador._fechaAniversario;
 
-            const fechaVencStr = operador._fechaVencimientoReal
-                ? this._formatearFecha(operador._fechaVencimientoReal)
+            const anivStr = operador._fechaAniversario
+                ? this._formatearFecha(operador._fechaAniversario)
                 : 'N/A';
-            const pendStr = (operador.vac_pendientes && operador.vac_pendientes > 0)
-                ? ` (⚠️ ${operador.vac_pendientes} pendientes)`
-                : '';
 
-            console.log(`  ${idx + 1}. ${operador.nombre.substring(0, 40).padEnd(40)} | ` +
-                `Slot: Días ${diaInicio.toString().padStart(3)}-${diaFin.toString().padStart(3)} ` +
-                `del bloque | Venc: ${fechaVencStr}${pendStr}`);
+            console.log(`  ${(idx + 1).toString().padStart(2)}. ${operador.nombre.substring(0, 30).padEnd(30)} | ` +
+                `Slot: Días ${diaInicio.toString().padStart(3)}-${diaFin.toString().padStart(3)} | ` +
+                `Aniv: ${anivStr}`);
 
-            // Siguiente operador empieza 51 días después
             diaInicio += espaciamiento;
         }
 
-        // Sarmiento/op_vacaciones toma vacaciones al final
+        // Operador de reemplazo toma vacaciones al final
         if (operadorReemplazo && this.estadoOperadores[operadorReemplazo.id_operador]) {
-            const slotInicioSarmiento = diaInicio;
-            const slotFinSarmiento = slotInicioSarmiento + 29;
+            const slotInicioReemplazo = diaInicio;
+            const slotFinReemplazo = slotInicioReemplazo + 29;
 
             this.estadoOperadores[operadorReemplazo.id_operador].necesitaVacaciones = true;
             this.estadoOperadores[operadorReemplazo.id_operador].prioridadVacaciones = operadoresRegulares.length + 1;
-            this.estadoOperadores[operadorReemplazo.id_operador].slotInicioBloque = slotInicioSarmiento;
-            this.estadoOperadores[operadorReemplazo.id_operador].slotFinBloque = slotFinSarmiento;
+            this.estadoOperadores[operadorReemplazo.id_operador].slotInicioBloque = slotInicioReemplazo;
+            this.estadoOperadores[operadorReemplazo.id_operador].slotFinBloque = slotFinReemplazo;
             this.estadoOperadores[operadorReemplazo.id_operador].diasVacacionesTotales = 30;
 
-            console.log(`\n  ⭐ ${operadorReemplazo.nombre.substring(0, 40).padEnd(40)} | ` +
-                `Slot: Días ${slotInicioSarmiento.toString().padStart(3)}-${slotFinSarmiento.toString().padStart(3)} ` +
+            console.log(`\n  ⭐ ${operadorReemplazo.nombre.substring(0, 30).padEnd(30)} | ` +
+                `Slot: Días ${slotInicioReemplazo.toString().padStart(3)}-${slotFinReemplazo.toString().padStart(3)} ` +
                 `(propias vacaciones)`);
         }
 
-        const bloqueTotal = diaInicio + 30;
-        console.log(`\n${'='.repeat(70)}`);
+        console.log('\n' + '='.repeat(70));
         console.log('✅ PROGRAMACIÓN COMPLETADA');
-        console.log(`✅ Bloque total: ${bloqueTotal} días (con espaciamiento anti-duplicidad)`);
-        console.log('✅ Las vacaciones empezarán SOLO al final del período de descanso');
+        console.log('✅ Vacaciones empiezan después de aniversario');
+        console.log('✅ Se activan solo al final de ciclo o después de huecos');
         console.log('='.repeat(70) + '\n');
     }
 
@@ -553,12 +615,125 @@ class OptimizadorHeuristico {
     }
 
     /**
-     * Gestiona el bloque vacacional con espaciamiento
+     * Gestiona el bloque vacacional con validación de aniversarios
+     * Las vacaciones solo se activan después del aniversario y al final de ciclo o después de huecos
      * @param {Date} fechaActual 
      * @param {number} diaNum 
      */
     _gestionarBloqueVacacional(fechaActual, diaNum) {
-        // Implementación simplificada - ver código Python completo
+        const anoOptimizacion = this.config.ano_analisis;
+
+        // Buscar operador listo para iniciar vacaciones
+        if (!this.bloqueVacacionalIniciado) {
+            for (const [opId, estado] of Object.entries(this.estadoOperadores)) {
+                if (estado.necesitaVacaciones && !estado.esOperadorReemplazo) {
+                    const [estadoTurno] = this._calcularEstadoTurno(estado);
+                    const diasTd = estado.diasTdCiclo;
+                    const diasTn = estado.diasTnCiclo;
+                    const diasDescanso = estado.diasDescansoCiclo;
+                    const ultimoDiaDescanso = diasTd + diasTn + diasDescanso;
+
+                    // Solo iniciar si está en último día de descanso (fin de ciclo)
+                    if (estadoTurno === 'descansando' && estado.diaCiclo === ultimoDiaDescanso) {
+                        this.bloqueVacacionalIniciado = true;
+                        this.fechaInicioBloqueVacacional = fechaActual;
+                        this.diaActualBloque = 0;
+                        console.log(`🔄 Bloque vacacional iniciado el ${this._formatearFecha(fechaActual)}`);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Gestionar vacaciones activas
+        if (this.bloqueVacacionalIniciado) {
+            for (const [opId, estado] of Object.entries(this.estadoOperadores)) {
+                const slotInicio = estado.slotInicioBloque;
+                const slotFin = estado.slotFinBloque;
+
+                if (slotInicio === undefined || slotFin === undefined) continue;
+
+                const debeEstarVacaciones = slotInicio <= this.diaActualBloque && this.diaActualBloque <= slotFin;
+                const estaVacaciones = estado.enVacaciones;
+
+                // ACTIVAR vacaciones - con validación de aniversario
+                if (debeEstarVacaciones && !estaVacaciones) {
+                    const operador = estado.operador;
+
+                    // ✅ Verificar que haya pasado el aniversario
+                    if (!this._puedeTomarVacaciones(operador, fechaActual, anoOptimizacion)) {
+                        const fechaAniv = estado.fechaAniversario;
+                        const anivStr = fechaAniv ? this._formatearFecha(fechaAniv) : 'N/A';
+                        console.warn(`⚠️ ${operador.nombre}: No puede tomar vacaciones aún (aniversario: ${anivStr})`);
+                        continue;
+                    }
+
+                    // Verificar que esté al final del ciclo (para operadores regulares)
+                    if (!estado.esOperadorReemplazo) {
+                        const [estadoTurno] = this._calcularEstadoTurno(estado);
+                        const diasTd = estado.diasTdCiclo;
+                        const diasTn = estado.diasTnCiclo;
+                        const diasDescanso = estado.diasDescansoCiclo;
+                        const ultimoDiaDescanso = diasTd + diasTn + diasDescanso;
+
+                        // Solo activar si está en descanso y es el último día del ciclo
+                        if (estadoTurno !== 'descansando' || estado.diaCiclo !== ultimoDiaDescanso) {
+                            continue;
+                        }
+                    }
+
+                    // ✅ Activar vacaciones
+                    estado.enVacaciones = true;
+                    estado.diaVacacion = 1;
+
+                    console.log(`🏖️ ${operador.nombre}: Inicia vacaciones (${this._formatearFecha(fechaActual)})`);
+
+                    // Activar operador de reemplazo
+                    if (!estado.esOperadorReemplazo) {
+                        for (const [, reemplazoEstado] of Object.entries(this.estadoOperadores)) {
+                            if (reemplazoEstado.esOperadorReemplazo) {
+                                if (reemplazoEstado.diaCiclo === 0) {
+                                    reemplazoEstado.diaCiclo = 1;
+                                    console.log(`   → ${reemplazoEstado.operador.nombre} entra en servicio`);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+
+                // DESACTIVAR vacaciones
+                else if (!debeEstarVacaciones && estaVacaciones) {
+                    estado.enVacaciones = false;
+                    estado.diaVacacion = 0;
+                    estado.diaCiclo = 1;
+
+                    console.log(`✅ ${estado.operador.nombre}: Finaliza vacaciones (${this._formatearFecha(fechaActual)})`);
+
+                    // Desactivar reemplazo si no hay más vacaciones
+                    if (!estado.esOperadorReemplazo) {
+                        let vacacionesActivas = 0;
+                        for (const s of Object.values(this.estadoOperadores)) {
+                            if (s.enVacaciones && !s.esOperadorReemplazo) {
+                                vacacionesActivas++;
+                            }
+                        }
+
+                        if (vacacionesActivas === 0) {
+                            for (const [, reemplazoEstado] of Object.entries(this.estadoOperadores)) {
+                                if (reemplazoEstado.esOperadorReemplazo) {
+                                    reemplazoEstado.diaCiclo = 0;
+                                    console.log(`   → ${reemplazoEstado.operador.nombre} vuelve a espera`);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            this.diaActualBloque++;
+        }
     }
 
     /**
