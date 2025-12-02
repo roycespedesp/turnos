@@ -420,7 +420,67 @@ class OptimizadorHeuristico {
             const posicionesOcupadasDia = new Set();
             const posicionesOcupadasNoche = new Set();
 
-            // ... (resto de lógica de asignación)
+            // Función auxiliar: obtener candidato disponible
+            const obtenerCandidato = (tipoPos, turno) => {
+                const pool = operadoresDisponibles[tipoPos]?.[turno === 'TD' ? 'dia' : 'noche'];
+                if (!pool || pool.length === 0) return null;
+
+                // Buscar primer candidato no asignado y bajo límite de horas
+                for (let i = 0; i < pool.length; i++) {
+                    const [opId, estado] = pool[i];
+                    if (!(opId in asignaciones) && estado.horasAno < this.config.limite_horas_anuales) {
+                        pool.splice(i, 1); // Remover del pool
+                        return [opId, estado];
+                    }
+                }
+                return null;
+            };
+
+            // Función auxiliar: asignar turno a posición
+            const asignarTurno = (pos, turno) => {
+                const tipoPos = pos.tipo_posicion;
+                let candidato = obtenerCandidato(tipoPos, turno);
+
+                // Si no hay candidato regular, intentar con operador de reemplazo
+                if (!candidato && operadorReemplazo) {
+                    const [opId, estado] = operadorReemplazo;
+                    const [estadoTurno] = this._calcularEstadoTurno(estado);
+                    const turnoEsperado = turno === 'TD' ? 't.dia' : 't.noche';
+
+                    if (estadoTurno === turnoEsperado &&
+                        !(opId in asignaciones) &&
+                        estado.horasAno < this.config.limite_horas_anuales) {
+                        candidato = [opId, estado];
+                    }
+                }
+
+                if (candidato) {
+                    const [opId] = candidato;
+                    asignaciones[opId] = pos.id_posicion;
+
+                    if (turno === 'TD') {
+                        posicionesOcupadasDia.add(pos.id_posicion);
+                    } else {
+                        posicionesOcupadasNoche.add(pos.id_posicion);
+                    }
+                } else {
+                    // Hueco detectado
+                    console.warn(`⚠️ Hueco en ${this._formatearFecha(fechaActual)}: ${pos.id_posicion} sin operador para ${turno}`);
+                }
+            };
+
+            // Asignar turnos para todas las posiciones
+            const posicionesCentral = this.posiciones.filter(p => p.tipo_posicion === 'central');
+
+            // Primero asignar todos los turnos de DÍA
+            for (const pos of posicionesCentral) {
+                asignarTurno(pos, 'TD');
+            }
+
+            // Luego asignar todos los turnos de NOCHE
+            for (const pos of posicionesCentral) {
+                asignarTurno(pos, 'TN');
+            }
 
             // Generar registros del día
             for (const [opId, estado] of Object.entries(this.estadoOperadores)) {
